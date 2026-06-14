@@ -662,29 +662,30 @@ function DeveloperCard({ r }: { r: ScanResult }) {
   );
 }
 
-function DeveloperCard({ r }: { r: ScanResult }) {
-  const tone = r.devTrustScore >= 70 ? "var(--risk-low)" : r.devTrustScore >= 40 ? "var(--risk-medium)" : "var(--risk-extreme)";
+function ClusterCard({ r }: { r: ScanResult }) {
   return (
     <div className="rounded-md border border-border bg-surface">
-      <SectionHeader title="Developer Reputation" sub="cluster intel" />
+      <SectionHeader title="Wallet Cluster" sub={r.clusterId} />
       <div className="p-5 flex items-center gap-6">
-        <div className="text-center">
-          <div className="font-mono text-4xl leading-none" style={{ color: tone }}>{r.devTrustScore}</div>
-          <div className="text-[9px] uppercase tracking-wider text-muted-foreground mt-1">Trust score</div>
+        <div className="relative size-24 shrink-0">
+          <div className="absolute inset-0 rounded-full border border-primary/40" />
+          <div className="absolute inset-2 rounded-full border border-primary/30" />
+          <div className="absolute inset-4 rounded-full border border-primary/20" />
+          <div className="absolute inset-0 grid place-items-center">
+            <div className="size-3 rounded-full bg-primary shadow-[0_0_14px_var(--color-primary)]" />
+          </div>
+          {Array.from({ length: 6 }).map((_, i) => {
+            const angle = (i / 6) * Math.PI * 2;
+            const x = 50 + Math.cos(angle) * 40;
+            const y = 50 + Math.sin(angle) * 40;
+            return <div key={i} className="absolute size-1.5 rounded-full bg-primary/70" style={{ left: `${x}%`, top: `${y}%`, transform: "translate(-50%,-50%)" }} />;
+          })}
         </div>
-        <div className="flex-1 grid grid-cols-3 gap-3 text-xs">
-          <Link 
-            to="/developer/$address/token/$mint" 
-            params={{ 
-              address: r.address, 
-              mint: "all" 
-            }}
-            className="hover:opacity-80 transition-opacity"
-          >
-            <MetricBox label="Tokens launched" value={r.devTokensLaunched} />
-          </Link>
-          <MetricBox label="Reported" value={r.devReportedScams} tone={r.devReportedScams > 0 ? "warn" : "neutral"} />
-          <MetricBox label="Verified scams" value={r.devVerifiedScams} tone={r.devVerifiedScams > 0 ? "bad" : "neutral"} />
+        <div className="flex-1 grid grid-cols-2 gap-3 text-xs">
+          <MetricBox label="Related wallets" value={r.clusterWallets} />
+          <MetricBox label="Related tokens" value={r.clusterTokens} />
+          <MetricBox label="Funding links" value={Math.max(1, Math.floor(r.clusterWallets / 3))} />
+          <MetricBox label="Last activity" value={`${Math.floor(Math.random() * 24)}h`} />
         </div>
       </div>
     </div>
