@@ -98,8 +98,16 @@ const METADATA_UPDATE_LOG_FRAGMENTS = [
 /** How long (ms) to wait before reconnecting after a WebSocket close. */
 const RECONNECT_DELAY_MS = 5_000;
 
-/** Maximum reconnect attempts before giving up and logging a fatal error. */
-const MAX_RECONNECT_ATTEMPTS = 20;
+/**
+ * Maximum reconnect attempts before giving up.
+ * FIX: raised from 20 to effectively unlimited (Number.MAX_SAFE_INTEGER).
+ * A Railway service with intermittent Helius connectivity was hitting this cap
+ * after ~20 disconnects (100 seconds of cumulative downtime at 5s base delay)
+ * and permanently stopping the watcher for the lifetime of the process.
+ * The watcher should retry forever — Railway's restart policy handles true
+ * unrecoverable failures at the process level.
+ */
+const MAX_RECONNECT_ATTEMPTS = Number.MAX_SAFE_INTEGER;
 
 /** Solana RPC polling interval (ms) when fetching full transaction after alert. */
 const TX_FETCH_TIMEOUT_MS = 10_000;
