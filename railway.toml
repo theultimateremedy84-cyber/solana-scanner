@@ -1,0 +1,29 @@
+[build]
+builder = "RAILPACK"
+buildCommand = "bun install --frozen-lockfile && bun run build"
+
+[deploy]
+startCommand = "bun run start"
+healthcheckPath = "/"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
+
+# ---------------------------------------------------------------------------
+# Cron — process wallet_collection_jobs every minute
+#
+# FIX: The previous version used `curl` which is not guaranteed to be
+# installed in a Railpack/Bun container. The `|| true` masked failures
+# silently, causing auto-discovered jobs to stall in "pending" forever.
+#
+# This version uses `bun cron-trigger.mjs` (bun is always present since
+# it is the build/runtime tool). The script reads RAILWAY_PUBLIC_DOMAIN
+# (set automatically by Railway) and CRON_SECRET (set by you in Variables)
+# and POSTs to /api/process-jobs with the correct auth header.
+#
+# Required Railway Variables:
+#   CRON_SECRET — your secret string (must match CRON_SECRET in the main service)
+# ---------------------------------------------------------------------------
+[[deploy.cronJobs]]
+name     = "process-wallet-jobs"
+schedule = "* * * * *"
+command  = "bun cron-trigger.mjs"
