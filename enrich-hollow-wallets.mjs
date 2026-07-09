@@ -53,6 +53,23 @@ async function sbGet(path) {
   return Array.isArray(data) ? data : [];
 }
 
+async function sbGetAll(path, pageSize = 1000) {
+  const all = [];
+  let offset = 0;
+  const sep = path.includes('?') ? '&' : '?';
+  for (;;) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}${sep}limit=${pageSize}&offset=${offset}`, { headers: SB_H });
+    const text = await res.text();
+    let data;
+    try { data = JSON.parse(text); } catch { data = []; }
+    if (!Array.isArray(data) || data.length === 0) break;
+    all.push(...data);
+    if (data.length < pageSize) break;
+    offset += pageSize;
+  }
+  return all;
+}
+
 async function sbUpsert(table, row) {
   if (DRY_RUN) return 204;
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
@@ -244,14 +261,14 @@ async function main() {
   console.log(`  Hourly CU   : ${HOURLY_BUDGET}`);
   console.log('');
 
-  // Step 1: Fetch all wallet_performance_history rows
+  // Step 1: Fetch all wallet_performance_history rows (paginated across the full table)
   console.log('📥 Fetching wallet_performance_history...');
-  const perfRows = await sbGet('wallet_performance_history?select=wallet_address,token_address&limit=1000');
+  const perfRows = await sbGetAll('wallet_performance_history?select=wallet_address,token_address');
   console.log(`   ${perfRows.length} rows`);
 
-  // Step 2: Fetch all existing helius_full_history raw metrics
+  // Step 2: Fetch all existing helius_full_history raw metrics (paginated)
   console.log('📥 Fetching existing helius enrichments...');
-  const rawRows = await sbGet('wallet_raw_tx_metrics?select=wallet_address,token_address,data_source&limit=1000');
+  const rawRows = await sbGetAll('wallet_raw_tx_metrics?select=wallet_address,token_address,data_source&data_source=eq.helius_full_history');
   const enrichedSet = new Set(
     rawRows.filter(r => r.data_source === 'helius_full_history')
            .map(r => `${r.wallet_address}::${r.token_address}`)
@@ -325,8 +342,16 @@ async function main() {
 
   // Step 5: Trigger rescore via Supabase RPC (direct wallet upsert classification)
   console.log('\n🔄 Running classification rescore from updated data...');
-  // Re-read updated raw metrics grouped by wallet, compute classification stats
-  const updatedRaw = await sbGet('wallet_raw_tx_metrics?select=wallet_address,data_source,total_buy_txs,total_sell_txs,total_sol_invested&limit=1000');
+  // Re-read raw metrics only for wallets touched in this run, compute classification stats
+  const touchedWallets = [...allWalletsSeen];
+  let updatedRaw = [];
+  for (let i = 0; i < touchedWallets.length; i += 50) {
+    const batch = touchedWallets.slice(i, i + 50).map(encodeURIComponent).join(',');
+    const rows = await sbGet(
+      `wallet_raw_tx_metrics?select=wallet_address,data_source,total_buy_txs,total_sell_txs,total_sol_invested&wallet_address=in.(${batch})`,
+    );
+    updatedRaw.push(...rows);
+  }
   const walletRaw  = {};
   for (const r of updatedRaw) {
     const k = r.wallet_address;
