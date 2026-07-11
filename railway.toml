@@ -1,0 +1,47 @@
+[build]
+builder = "RAILPACK"
+buildCommand = "bun install --frozen-lockfile && bun run build"
+
+[deploy]
+startCommand = "bun run start"
+# FIX (2026-07-11): was "/api/discovery-status" — that endpoint does a chain
+# of Supabase calls (including a paginated up-to-90-request loop inside
+# getEnrichmentCoverage) with no timeout. It was fast enough to pass Railway's
+# healthcheck when the enricher ran wallets sequentially, but the
+# enrichment-fix patch made the enricher run ENRICHER_CONCURRENCY (default 5)
+# wallets in parallel, which multiplies concurrent Supabase load. Under that
+# load /api/discovery-status started taking too long (or hanging) to respond,
+# so every healthcheck attempt timed out as "service unavailable" and the
+# deploy was rolled back — the process itself was fine.
+# /healthz is a zero-dependency liveness probe (no DB, no external calls) —
+# use it for the deploy healthcheck. Use /api/discovery-status for manual
+# diagnostics only, not as the automated healthcheck target.
+healthcheckPath = "/healthz"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
+
+# ---------------------------------------------------------------------------
+# Cron — belt-and-suspenders backup for /api/process-jobs
+#
+# PRIMARY MECHANISM: The in-process scheduler (process-jobs-scheduler.ts)
+#   runs every 60 s inside the server process. It does NOT require
+#   RAILWAY_PUBLIC_DOMAIN, CRON_SECRET, or any HTTP call. It is the
+#   preferred path and processes jobs regardless of cron status.
+#
+# BACKUP MECHANISM: This Railway cron job fires bun cron-trigger.mjs
+#   once per minute. cron-trigger.mjs POSTs to /api/process-jobs with
+#   the x-cron-secret header. If the in-process scheduler is already
+#   running and has processed the jobs, the POST returns
+#   { "message": "No stuck jobs found" } — harmless no-op.
+#
+# Required Railway Variables (for the backup cron path):
+#   CRON_SECRET           — set by you in Railway → Variables ✓
+#   RAILWAY_PUBLIC_DOMAIN — injected automatically by Railway
+#
+# If RAILWAY_PUBLIC_DOMAIN is missing, cron-trigger.mjs exits cleanly
+# (no service restart triggered) and the primary scheduler continues.
+# ---------------------------------------------------------------------------
+[[deploy.cronJobs]]
+name     = "process-wallet-jobs"
+schedule = "* * * * *"
+command  = "bun cron-trigger.mjs"
