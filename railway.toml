@@ -45,3 +45,25 @@ restartPolicyMaxRetries = 10
 name     = "process-wallet-jobs"
 schedule = "* * * * *"
 command  = "bun cron-trigger.mjs"
+
+# ---------------------------------------------------------------------------
+# Daily maintenance pipeline
+#
+# Runs automatically at 03:00 UTC every day. Chains all maintenance steps
+# in the correct order:
+#   1. patch-null-roi.ts              — fix ROI stragglers from race conditions
+#   2. audit-rescore-v2.ts            — recompute all wallet scores
+#   3. fix-classification-promotion.ts — promote + DEMOTE wallet tiers correctly
+#   4. backfill-pool-address.mjs      — re-queue jobs with null pool_address
+#   5. integrity-monitor.ts           — print pass/fail health report to logs
+#
+# Check Railway logs for this cron job each morning for the health report.
+# If you see a ❌ in the logs, that step needs manual attention.
+#
+# To skip the pool backfill (once the queue is clean):
+#   Add SKIP_BACKFILL_POOL=1 to your Railway environment variables.
+# ---------------------------------------------------------------------------
+[[deploy.cronJobs]]
+name     = "daily-maintenance"
+schedule = "0 3 * * *"
+command  = "bun scripts/daily-pipeline.ts"
